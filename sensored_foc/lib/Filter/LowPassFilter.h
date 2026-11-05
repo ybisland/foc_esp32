@@ -19,8 +19,8 @@ public:
     void reset();
 
 private:
-    float cutoffHz_;
-    float value_;
-    uint32_t prevSampleUs_;
-    bool hasValue_;
+    float cutoffHz;
+    float value;
+    uint32_t prevSampleUs;
+    bool hasValue;
 };
