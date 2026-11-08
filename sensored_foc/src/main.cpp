@@ -35,7 +35,7 @@ void setup()
         BUS_VOLTAGE,
         M0_CURRENT_ADC_PIN_A, M0_CURRENT_ADC_PIN_B,
         M0_SHUNT_RESISTOR_OHM, M0_CURRENT_AMP_GAIN);
-    // Set hardware-appropriate limits before selecting a closed-loop mode.
+    // Optional: override the default limits (±150 rad/s and ±0.5 A).
     // m0_foc.setVelocityLimits(min_velocity_rad_s, max_velocity_rad_s);
     // m0_foc.setCurrentLimits(min_iq_a, max_iq_a);
     m0_foc.setVelocityFilterCutoff(1.0f);

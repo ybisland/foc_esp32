@@ -4,7 +4,8 @@
  * FOC_Controller usage:
  * 1. Create an instance and call configure() with the PWM pins, motor parameters,
  *    and current-sensor parameters.
- * 2. Configure velocity and current limits, configure the PID(s), then call
+ * 2. Velocity and current limits default to +/-150 rad/s and +/-0.5 A.
+ *    Optionally override them and configure the PID(s), then call
  *    calibrateSensor(); it calibrates current zero before encoder alignment.
  *    Do not enable closed-loop control if calibration fails.
  * 3. Set a target, select a mode, and call run() repeatedly from loop().
@@ -15,8 +16,9 @@
  *       foc.configure(PIN_A, PIN_B, PIN_C, pole_pairs, 1, bus_voltage,
  *                     CURRENT_PIN_A, CURRENT_PIN_B, shunt_resistor_ohm,
  *                     amp_gain);
- *       foc.setVelocityLimits(-max_velocity, max_velocity);
- *       foc.setCurrentLimits(-max_current, max_current);
+ *       // Optional: override the default velocity and current limits.
+ *       // foc.setVelocityLimits(-max_velocity, max_velocity); //  default +/-150 rad/s
+ *       // foc.setCurrentLimits(-max_current, max_current); // default +/-0.5 A
  *       // foc.setVelocityFilterCutoff(10.0f); // optional, defaults to 10 Hz
  *       foc.setVelPID(kp, ki, kd, ramp_limit);
  *       if (foc.calibrateSensor()) {
@@ -57,16 +59,14 @@ public:
                    int adc_pinA, int adc_pinB,
                    float shunt_resistor_ohm, float amp_gain);
 
-    // Closed-loop modes require the applicable limits to be configured first.
+    // Velocity and current limits have defaults and can be overridden.
     // Switching modes resets the corresponding outer-loop PID.
     bool setMode(FOCMode mode);
 
-    // Call after configure() and before enabling velocity/position modes.
-    // Limits are signed rad/s values; both must be finite and min <= max.
+    // Overrides the default signed velocity limits in rad/s; min must be <= max.
     void setVelocityLimits(float min_velocity, float max_velocity);
 
-    // Call after configure() and before enabling any closed-loop mode.
-    // Limits are signed A values; both must be finite and min <= max.
+    // Overrides the default signed current limits in A; min must be <= max.
     void setCurrentLimits(float min_current, float max_current);
 
     // Sets the velocity feedback low-pass cutoff in Hz; call after configure().
@@ -119,7 +119,6 @@ private:
     float bus_voltage;
     float min_velocity, max_velocity;
     float min_current, max_current;
-    bool velocity_limits_configured, current_limits_configured;
     float limitVelocity(float velocity) const;
     float limitCurrent(float current) const;
 

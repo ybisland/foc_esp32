@@ -43,12 +43,10 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     this->pole_pairs = pole_pairs;
     this->sensor_dir = sensor_dir;
     this->bus_voltage = bus_voltage;
-    this->min_velocity = 0.0f;
-    this->max_velocity = 0.0f;
-    this->min_current = 0.0f;
-    this->max_current = 0.0f;
-    this->velocity_limits_configured = false;
-    this->current_limits_configured = false;
+    this->min_velocity = -150.0f;
+    this->max_velocity = 150.0f;
+    this->min_current = -0.5f;
+    this->max_current = 0.5f;
     this->target_velocity = 0;
     this->target_position = 0;
     this->target_current = 0;
@@ -97,34 +95,18 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     }
 
     // vel_pid = PID_Controller{.P = 2, .I = 0, .D = 0, .ramp = 100000, .limit = bus_voltage / 2};
-    vel_pid.configure(2, 0, 0, 100000, calculateBackCalculationGain(2, 0));
+    vel_pid.configure(0.8, 0.5, 0, 100000, calculateBackCalculationGain(2, 0));
     pos_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
     Iq_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
     Id_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
 
-    vel_lpf.configure(10.0f);
+    vel_lpf.configure(2.0f);
     current_a_lpf.configure(100.0f);
     current_b_lpf.configure(100.0f);
 }
 
 bool FOC_Controller::setMode(FOCMode mode)
 {
-    const bool requires_velocity_limits =
-        mode == FOC_MODE_POSITION_CLOSED_LOOP ||
-        mode == FOC_MODE_VELOCITY_CLOSED_LOOP;
-    const bool requires_current_limits =
-        mode == FOC_MODE_POSITION_CLOSED_LOOP ||
-        mode == FOC_MODE_VELOCITY_CLOSED_LOOP ||
-        mode == FOC_MODE_CURRENT_LOOP;
-
-    if ((requires_velocity_limits && !velocity_limits_configured) ||
-        (requires_current_limits && !current_limits_configured))
-    {
-        this->mode = FOC_MODE_STOPPED;
-        setPhaseVoltage(0, 0, 0);
-        return false;
-    }
-
     if (this->mode != mode)
     {
         if (mode == FOC_MODE_POSITION_CLOSED_LOOP)
@@ -154,7 +136,6 @@ void FOC_Controller::setVelocityLimits(float min_velocity, float max_velocity)
 {
     this->min_velocity = min_velocity;
     this->max_velocity = max_velocity;
-    velocity_limits_configured = true;
     target_velocity = limitVelocity(target_velocity);
 }
 
@@ -162,30 +143,24 @@ void FOC_Controller::setCurrentLimits(float min_current, float max_current)
 {
     this->min_current = min_current;
     this->max_current = max_current;
-    current_limits_configured = true;
     target_current = limitCurrent(target_current);
 }
 
 float FOC_Controller::limitVelocity(float velocity) const
 {
-    return velocity_limits_configured
-               ? clamp(velocity, min_velocity, max_velocity)
-               : velocity;
+    return clamp(velocity, min_velocity, max_velocity);
 }
 
 float FOC_Controller::limitCurrent(float current) const
 {
-    return current_limits_configured
-               ? clamp(current, min_current, max_current)
-               : current;
+    return clamp(current, min_current, max_current);
 }
 
 float FOC_Controller::setPhaseVoltage(float Uq, float Ud, float e_angle)
 {
-    // Vector magnitude limit
-    // Keep the phase-voltage vector within the linear range of centered SPWM.
+    // Keep the voltage vector within the linear range of SVPWM.
     const float voltage_magnitude = sqrtf(Uq * Uq + Ud * Ud);
-    const float voltage_limit = bus_voltage * 0.5f;
+    const float voltage_limit = bus_voltage * _1_SQRT3;
     float voltage_scale = 1.0f;
     if (voltage_magnitude > voltage_limit)
     {
@@ -208,13 +183,14 @@ float FOC_Controller::setPhaseVoltage(float Uq, float Ud, float e_angle)
     Ub = (sqrt(3) * Ubeta - Ualpha) / 2;
     Uc = (-Ualpha - sqrt(3) * Ubeta) / 2;
 
-    // spwm
-    float dc_bias = bus_voltage / 2;
+    // Min-max zero-sequence injection (SVPWM)
+    const float phase_voltage_max = fmaxf(Ua, fmaxf(Ub, Uc));
+    const float phase_voltage_min = fminf(Ua, fminf(Ub, Uc));
+    const float common_mode = -0.5f * (phase_voltage_max + phase_voltage_min);
     float duty_a, duty_b, duty_c;
-    Ua += dc_bias, Ub += dc_bias, Uc += dc_bias;
-    duty_a = clamp(Ua / bus_voltage, 0.0f, 1.0f);
-    duty_b = clamp(Ub / bus_voltage, 0.0f, 1.0f);
-    duty_c = clamp(Uc / bus_voltage, 0.0f, 1.0f);
+    duty_a = clamp(0.5f + (Ua + common_mode) / bus_voltage, 0.0f, 1.0f);
+    duty_b = clamp(0.5f + (Ub + common_mode) / bus_voltage, 0.0f, 1.0f);
+    duty_c = clamp(0.5f + (Uc + common_mode) / bus_voltage, 0.0f, 1.0f);
 
     // output pwm
     ledcWrite(ledc_channel_A, duty_a * 255);
