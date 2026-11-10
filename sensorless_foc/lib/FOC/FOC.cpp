@@ -109,8 +109,8 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     vel_lpf.configure(1.0f);
     // the max speed of DengFOC V4 motor is about 150 rad/s, the electric angle speed is 150/2pi * pole_pairs rad/s
     // so the maximum frequency of electric angle is 167 Hz, the cutoff frequency of current filter should be higher than 167 Hz
-    current_a_lpf.configure(180.0f);
-    current_b_lpf.configure(180.0f);
+    current_a_lpf.configure(300.0f);
+    current_b_lpf.configure(300.0f);
 }
 
 bool FOC_Controller::setMode(FOCMode mode)
