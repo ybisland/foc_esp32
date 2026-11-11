@@ -6,7 +6,6 @@
 #include <cstring>
 
 static FOC_Controller *foc_controller = nullptr;
-static FOCMode active_mode = FOC_MODE_STOPPED;
 
 static bool is_serial_space(char c)
 {
@@ -40,23 +39,20 @@ static void print_serial_help()
 {
     Serial.println("Commands:");
     Serial.println("  help");
-    Serial.println("  mode stop|velocity|position|current");
-    Serial.println("  speed <rad/s>     angle <rad>     iq <A>     cutoff <Hz>");
+    Serial.println("  mode stop|velocity|current");
+    Serial.println("  speed <rad/s>     iq <A>     cutoff <Hz>");
     Serial.println("  velpid <kp> <ki> <kd> <ramp>");
-    Serial.println("  pospid <kp> <ki> <kd> <ramp>");
     Serial.println("  curpid <kp> <ki> <kd> <ramp>");
-    Serial.println("Velocity PID outputs Iq (A); position PID outputs speed (rad/s).");
+    Serial.println("Velocity PID outputs Iq (A).");
     Serial.println("Set motion limits through the API before selecting a closed-loop mode.");
     Serial.println("Velocity mode requires velocity and current limits; current mode requires current limits.");
     Serial.println("Current sensing is configured by configure(); calibrateSensor() calibrates current zero first.");
     Serial.println("PID commands are optional; current PID settings are used until changed.");
-    Serial.println("Position mode initially holds the current position; send angle afterward.");
 }
 
 void serial_command_init(FOC_Controller *foc)
 {
     foc_controller = foc;
-    active_mode = FOC_MODE_STOPPED;
     Serial.println("FOC ready; send help for commands.");
 }
 
@@ -81,14 +77,13 @@ static void handle_serial_command(char *line)
         char *mode_text = next_serial_token(cursor);
         if (mode_text == nullptr || next_serial_token(cursor) != nullptr)
         {
-            Serial.println("ERR: usage: mode stop|velocity|position|current");
+            Serial.println("ERR: usage: mode stop|velocity|current");
             return;
         }
 
         if (std::strcmp(mode_text, "stop") == 0)
         {
             foc_controller->setMode(FOC_MODE_STOPPED);
-            active_mode = FOC_MODE_STOPPED;
             Serial.println("OK mode stop");
             return;
         }
@@ -97,47 +92,28 @@ static void handle_serial_command(char *line)
         {
             if (!foc_controller->setMode(FOC_MODE_VELOCITY_CLOSED_LOOP))
             {
-                active_mode = FOC_MODE_STOPPED;
                 Serial.println("ERR: configure velocity and current limits through the API first");
                 return;
             }
-            active_mode = FOC_MODE_VELOCITY_CLOSED_LOOP;
             Serial.println("OK mode velocity");
-        }
-        else if (std::strcmp(mode_text, "position") == 0)
-        {
-            const bool entering_position = active_mode != FOC_MODE_POSITION_CLOSED_LOOP;
-            if (!foc_controller->setMode(FOC_MODE_POSITION_CLOSED_LOOP))
-            {
-                active_mode = FOC_MODE_STOPPED;
-                Serial.println("ERR: configure velocity and current limits through the API first");
-                return;
-            }
-            active_mode = FOC_MODE_POSITION_CLOSED_LOOP;
-            if (entering_position)
-                foc_controller->setTargetPosition(foc_controller->getActualPosition());
-            Serial.println("OK mode position");
         }
         else if (std::strcmp(mode_text, "current") == 0)
         {
             if (!foc_controller->setMode(FOC_MODE_CURRENT_LOOP))
             {
-                active_mode = FOC_MODE_STOPPED;
                 Serial.println("ERR: configure current limits through the API first");
                 return;
             }
-            active_mode = FOC_MODE_CURRENT_LOOP;
             Serial.println("OK mode current");
         }
         else
         {
-            Serial.println("ERR: mode must be stop, velocity, position, or current");
+            Serial.println("ERR: mode must be stop, velocity, or current");
         }
         return;
     }
 
     if (std::strcmp(command, "velpid") == 0 ||
-        std::strcmp(command, "pospid") == 0 ||
         std::strcmp(command, "curpid") == 0)
     {
         float gains[4];
@@ -153,7 +129,7 @@ static void handle_serial_command(char *line)
         }
         if (!valid || next_serial_token(cursor) != nullptr || gains[3] < 0.0f)
         {
-            Serial.println("ERR: usage: <velpid|pospid|curpid> <kp> <ki> <kd> <ramp>=0");
+            Serial.println("ERR: usage: <velpid|curpid> <kp> <ki> <kd> <ramp>=0");
             return;
         }
 
@@ -161,11 +137,6 @@ static void handle_serial_command(char *line)
         {
             foc_controller->setVelPID(gains[0], gains[1], gains[2], gains[3]);
             Serial.println("OK velpid");
-        }
-        else if (std::strcmp(command, "pospid") == 0)
-        {
-            foc_controller->setPosPID(gains[0], gains[1], gains[2], gains[3]);
-            Serial.println("OK pospid");
         }
         else
         {
@@ -176,7 +147,6 @@ static void handle_serial_command(char *line)
     }
 
     if (std::strcmp(command, "speed") == 0 ||
-        std::strcmp(command, "angle") == 0 ||
         std::strcmp(command, "cutoff") == 0 ||
         std::strcmp(command, "iq") == 0)
     {
@@ -205,11 +175,6 @@ static void handle_serial_command(char *line)
         {
             foc_controller->setTargetVelocity(value);
             Serial.println("OK speed target");
-        }
-        else if (std::strcmp(command, "angle") == 0)
-        {
-            foc_controller->setTargetPosition(value);
-            Serial.println("OK angle target");
         }
         else
         {

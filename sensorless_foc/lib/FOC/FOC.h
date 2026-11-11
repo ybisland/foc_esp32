@@ -32,9 +32,6 @@
  *   }
  *   void loop() { foc.run(); }
  *
- * For position mode, configure the position PID and use setTargetPosition() with
- * FOC_MODE_POSITION_CLOSED_LOOP instead.
- * 
  * default 10.0Hz 100.0Hz
  */
 
@@ -44,7 +41,6 @@
 
 typedef enum {
     FOC_MODE_STOPPED = 0,
-    FOC_MODE_POSITION_CLOSED_LOOP = 1,
     FOC_MODE_VELOCITY_CLOSED_LOOP = 2,
     FOC_MODE_CURRENT_LOOP = 3
 } FOCMode;
@@ -89,23 +85,17 @@ public:
     // Velocity PID output is an Iq reference in A; ramp_limit is A/s.
     void setVelPID(float kp, float ki, float kd, float ramp_limit);
 
-    // Position PID output is a velocity reference in rad/s; ramp_limit is rad/s^2.
-    void setPosPID(float kp, float ki, float kd, float ramp_limit);
-
     // Current PID output is voltage in V; ramp_limit is V/s.
     void setCurPID(float kp, float ki, float kd, float ramp_limit);
 
     void setTargetVelocity(float target_velocity);
-
-    void setTargetPosition(float target_position);
 
     // only used for debugging current closed-loop control, not for normal operation
     void SetTargetCurrent(float target_current);
 
     float getActualVelocity() const;
 
-    // Returns the turn-tracked angle with turns before the latest position-mode
-    // entry excluded.
+    // Returns the turn-tracked sensor angle in radians for comparison.
     double getActualPosition() const;
 
     // Calibrates current zero before encoder alignment; returns false if the
@@ -135,7 +125,7 @@ private:
     /* Position sensor */
     Sensor_AS5600 sensor;
     int sensor_dir;
-    double position_offset; // record how many loops have passed since the last position reset
+    double actual_position;
     float zero_electric_angle;
 
     /* Current Sensor */
@@ -151,13 +141,9 @@ private:
     void calibrateCurrentSensorZeroDrift();
     void updateCurrentSensor();
 
-    /* Position loop */
-    double target_position, actual_position;
-    PID_Controller vel_pid;
-
     /* Velocity loop */
     float target_velocity, actual_velocity;
-    PID_Controller pos_pid;
+    PID_Controller vel_pid;
     LowPassFilter vel_lpf;
 
     /* Current loop */
@@ -190,7 +176,6 @@ private:
     void resetRuntimeState();
     void SMO_estimate();
 
-    void runPositionClosedLoop();
     void runVelocityClosedLoop();
     void runVelocityLoop(float velocity_reference);
     void runCurrentClosedLoop();

@@ -50,9 +50,8 @@ void setup()
         Serial.println("Sensor calibration failed; closed-loop commands are disabled.");
     m0_foc.setMode(FOC_MODE_STOPPED);
 
-    // Velocity PID output ramp is Iq in A/s; position PID output ramp is speed in rad/s^2.
+    // Velocity PID output ramp is Iq in A/s.
     // m0_foc.setVelPID(0.4f, 0.05f, 0.0f, 10.0f);
-    // m0_foc.setPosPID(1.0f, 0.8f, 0.0f, 6.0f);
 
     serial_command_init(&m0_foc);
 }

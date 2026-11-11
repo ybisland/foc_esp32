@@ -8,19 +8,19 @@ available commands.
 | --- | --- | --- |
 | `mode stop` | — | Stops closed-loop output. |
 | `mode velocity` | — | Enters velocity mode after successful calibration. |
-| `mode position` | — | Enters position mode after successful calibration; initially holds the current position. |
 | `speed 5.0` | radians/second | Sets the velocity target; effective in velocity mode. |
-| `angle 0.5` | radians | Sets the position target; effective in position mode. |
 | `cutoff 10.0` | Hz | Sets the velocity feedback filter cutoff; must be positive and finite. |
 | `velpid <kp> <ki> <kd> <ramp>` | — | Configures the velocity PID. |
-| `pospid <kp> <ki> <kd> <ramp>` | — | Configures the position PID. |
+| `curpid <kp> <ki> <kd> <ramp>` | — | Configures the current PID. |
 
 PID commands are optional; the current FOC PID settings remain in use until a
-`velpid` or `pospid` command changes them. PID values must be finite. `ramp`
+`velpid` or `curpid` command changes them. PID values must be finite. `ramp`
 must be nonnegative; zero disables the output ramp limit. After startup, the
-controller remains stopped until a mode command is received. On entering
-position mode, it holds its current position; send `angle <value>` afterward to
-move to a new target.
+controller remains stopped until a mode command is received.
+
+The AS5600 remains available for sensor-angle comparison and is still used for
+commutation and velocity feedback. The `e_angle` and `SMO_Est_theta` telemetry
+values can be compared; the SMO angle is not yet used to control the motor.
 
 Control commands reply with `OK` or an `ERR` message; `help` prints the command
 list. Values must be finite numbers, and each command must fit within 63

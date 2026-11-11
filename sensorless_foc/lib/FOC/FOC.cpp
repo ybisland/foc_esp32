@@ -54,11 +54,9 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     ClearSMO();
     this->smo_last_time = micros();
     this->target_velocity = 0;
-    this->target_position = 0;
     this->target_current = 0;
     this->actual_velocity = 0;
     this->actual_position = 0;
-    this->position_offset = 0;
     this->zero_electric_angle = 0.0f;
     this->current_ud_pid_output = 0.0f;
     this->current_voltage_scale = 1.0f;
@@ -72,7 +70,6 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
 
     this->mode = FOC_MODE_STOPPED;
     vel_pid.reset();
-    pos_pid.reset();
     Iq_pid.reset();
     Id_pid.reset();
     vel_lpf.reset();
@@ -102,7 +99,6 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
 
     // vel_pid = PID_Controller{.P = 2, .I = 0, .D = 0, .ramp = 100000, .limit = bus_voltage / 2};
     vel_pid.configure(0.6, 0.02, 0, 100000, calculateBackCalculationGain(0.6, 0.02));
-    pos_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
     Iq_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
     Id_pid.configure(2, 0.8, 0, 100000, calculateBackCalculationGain(2, 0.8f));
 
@@ -115,6 +111,11 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
 
 bool FOC_Controller::setMode(FOCMode mode)
 {
+    if (mode != FOC_MODE_STOPPED &&
+        mode != FOC_MODE_VELOCITY_CLOSED_LOOP &&
+        mode != FOC_MODE_CURRENT_LOOP)
+        return false;
+
     if (mode == FOC_MODE_STOPPED)
     {
         resetRuntimeState();
@@ -124,14 +125,7 @@ bool FOC_Controller::setMode(FOCMode mode)
         if (this->mode == FOC_MODE_STOPPED)
             smo_last_time = micros();
 
-        if (mode == FOC_MODE_POSITION_CLOSED_LOOP)
-        {
-            pos_pid.reset();
-            vel_pid.reset();
-            position_offset = sensor.getAngle() - sensor.getMechanicalAngle();
-            actual_position = sensor.getAngle() - position_offset;
-        }
-        else if (mode == FOC_MODE_VELOCITY_CLOSED_LOOP)
+        if (mode == FOC_MODE_VELOCITY_CLOSED_LOOP)
         {
             vel_pid.reset();
         }
@@ -218,19 +212,9 @@ void FOC_Controller::setTargetVelocity(float target_velocity)
     this->target_velocity = limitVelocity(target_velocity);
 }
 
-void FOC_Controller::setTargetPosition(float target_position)
-{
-    this->target_position = target_position;
-}
-
 void FOC_Controller::setVelPID(float kp, float ki, float kd, float ramp_limit)
 {
     vel_pid.configure(kp, ki, kd, ramp_limit, calculateBackCalculationGain(kp, ki));
-}
-
-void FOC_Controller::setPosPID(float kp, float ki, float kd, float ramp_limit)
-{
-    pos_pid.configure(kp, ki, kd, ramp_limit, calculateBackCalculationGain(kp, ki));
 }
 
 void FOC_Controller::setCurPID(float kp, float ki, float kd, float ramp_limit)
@@ -269,20 +253,17 @@ void FOC_Controller::run()
         return;
     }
 
-    actual_position = sensor.getAngle() - position_offset;
+    actual_position = sensor.getAngle();
     actual_velocity = vel_lpf.update(sensor_dir * sensor.getVelocity());
 
-    if (mode == FOC_MODE_POSITION_CLOSED_LOOP ||
-        mode == FOC_MODE_VELOCITY_CLOSED_LOOP ||
+    if (mode == FOC_MODE_VELOCITY_CLOSED_LOOP ||
         mode == FOC_MODE_CURRENT_LOOP)
         updateCurrentSensor();
 
     if (mode != FOC_MODE_STOPPED && smo_initialized)
         SMO_estimate();
 
-    if (mode == FOC_MODE_POSITION_CLOSED_LOOP)
-        runPositionClosedLoop();
-    else if (mode == FOC_MODE_VELOCITY_CLOSED_LOOP)
+    if (mode == FOC_MODE_VELOCITY_CLOSED_LOOP)
         runVelocityClosedLoop();
     else if (mode == FOC_MODE_CURRENT_LOOP)
         runCurrentClosedLoop();
@@ -345,17 +326,6 @@ void FOC_Controller::run()
         // }
     }
 }
-
-void FOC_Controller::runPositionClosedLoop()
-{
-    const float position_error =
-        sensor_dir * static_cast<float>(target_position - actual_position);
-    const float requested_velocity = pos_pid.update(position_error);
-    const float velocity_reference = limitVelocity(requested_velocity);
-    pos_pid.backCalculate(velocity_reference);
-    runVelocityLoop(velocity_reference);
-}
-
 
 void FOC_Controller::runVelocityClosedLoop()
 {
@@ -510,7 +480,6 @@ void FOC_Controller::ClearSMO()
 
 void FOC_Controller::resetRuntimeState()
 {
-    target_position = 0.0;
     target_velocity = 0.0f;
     target_current = 0.0f;
 
@@ -529,7 +498,6 @@ void FOC_Controller::resetRuntimeState()
     current_ud_applied = 0.0f;
 
     vel_pid.reset();
-    pos_pid.reset();
     Iq_pid.reset();
     Id_pid.reset();
     vel_lpf.reset();
