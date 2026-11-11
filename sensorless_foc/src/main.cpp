@@ -32,18 +32,18 @@ void setup()
     pinMode(12, OUTPUT);
     digitalWrite(12, HIGH);
 
-    m0_foc.configure(
+    const FOC_Parameters m0_parameters = {
         M0_PIN_A, M0_PIN_B, M0_PIN_C,
         POLE_PAIRS, DIR,
         BUS_VOLTAGE,
         M0_CURRENT_ADC_PIN_A, M0_CURRENT_ADC_PIN_B,
-        M0_SHUNT_RESISTOR_OHM, M0_CURRENT_AMP_GAIN);
+        M0_SHUNT_RESISTOR_OHM, M0_CURRENT_AMP_GAIN,
+        M0_PhaseResistance, M0_PhaseInductance};
+    m0_foc.configure(m0_parameters);
     // Optional: override the default limits (±150 rad/s and ±0.5 A).
     // m0_foc.setVelocityLimits(min_velocity_rad_s, max_velocity_rad_s);
     // m0_foc.setCurrentLimits(min_iq_a, max_iq_a);
     m0_foc.setVelocityFilterCutoff(10.0f);
-
-    m0_foc.setSMOParameters(M0_PhaseResistance, M0_PhaseInductance);
 
     sensors_calibrated = m0_foc.calibrateSensor();
     if (!sensors_calibrated)

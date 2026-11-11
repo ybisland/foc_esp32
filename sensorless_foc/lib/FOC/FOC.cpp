@@ -4,9 +4,9 @@
 
 int FOC_Controller::controller_count = 0;
 
-#define _3PI_2 (4.71238898038f)
-#define _1_SQRT3 0.57735026919f
-#define _2_SQRT3 1.15470053838f
+constexpr float _3PI_2 = 4.71238898038f;
+constexpr float _1_SQRT3 = 0.57735026919f;
+constexpr float _2_SQRT3 = 1.15470053838f;
 
 // normalize angle into [0, 2PI]
 static float normalize_angle(float angle)
@@ -32,25 +32,21 @@ static float calculateBackCalculationGain(float kp, float ki)
     return kp != 0.0f ? fabsf(ki / kp) : 0.0f;
 }
 
-void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C, 
-    int pole_pairs, int sensor_dir, 
-    float bus_voltage,
-    int adc_pinA, int adc_pinB,
-    float shunt_resistor_ohm, float amp_gain)
+void FOC_Controller::configure(const FOC_Parameters &parameters)
 {
-    this->pwm_pin_A = pwm_pin_A;
-    this->pwm_pin_B = pwm_pin_B;
-    this->pwm_pin_C = pwm_pin_C;
-    this->pole_pairs = pole_pairs;
-    this->sensor_dir = sensor_dir;
-    this->bus_voltage = bus_voltage;
+    this->pwm_pin_A = parameters.pwm_pin_A;
+    this->pwm_pin_B = parameters.pwm_pin_B;
+    this->pwm_pin_C = parameters.pwm_pin_C;
+    this->pole_pairs = parameters.pole_pairs;
+    this->sensor_dir = parameters.sensor_dir;
+    this->bus_voltage = parameters.bus_voltage;
     this->min_velocity = -150.0f;
     this->max_velocity = 150.0f;
     this->min_current = -0.5f;
     this->max_current = 0.5f;
-    this->Rs = 0.0f;
-    this->Ls = 0.0f;
-    this->smo_initialized = false;
+    this->Rs = parameters.phase_resistance_ohm;
+    this->Ls = parameters.phase_inductance_h;
+    this->smo_initialized = true;
     ClearSMO();
     this->smo_last_time = micros();
     this->target_velocity = 0;
@@ -62,11 +58,12 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     this->current_voltage_scale = 1.0f;
     this->current_uq_applied = 0.0f;
     this->current_ud_applied = 0.0f;
-    this->adc_pinA = adc_pinA;
-    this->adc_pinB = adc_pinB;
-    this->shunt_resistor_ohm = shunt_resistor_ohm;
-    this->amp_gain = amp_gain;
-    this->volts_to_amps_ratio = 1.0f / shunt_resistor_ohm / amp_gain;
+    this->adc_pinA = parameters.adc_pinA;
+    this->adc_pinB = parameters.adc_pinB;
+    this->shunt_resistor_ohm = parameters.shunt_resistor_ohm;
+    this->amp_gain = parameters.amp_gain;
+    this->volts_to_amps_ratio =
+        1.0f / parameters.shunt_resistor_ohm / parameters.amp_gain;
 
     this->mode = FOC_MODE_STOPPED;
     vel_pid.reset();
@@ -83,12 +80,12 @@ void FOC_Controller::configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
     ledcSetup(ledc_channel_A, 30000, 8); // pwm频道, 频率, 精度
     ledcSetup(ledc_channel_B, 30000, 8); // pwm频道, 频率, 精度
     ledcSetup(ledc_channel_C, 30000, 8); // pwm频道, 频率, 精度
-    ledcAttachPin(pwm_pin_A, ledc_channel_A);
-    ledcAttachPin(pwm_pin_B, ledc_channel_B);
-    ledcAttachPin(pwm_pin_C, ledc_channel_C);
+    ledcAttachPin(parameters.pwm_pin_A, ledc_channel_A);
+    ledcAttachPin(parameters.pwm_pin_B, ledc_channel_B);
+    ledcAttachPin(parameters.pwm_pin_C, ledc_channel_C);
 
-    pinMode(adc_pinA, INPUT);
-    pinMode(adc_pinB, INPUT);
+    pinMode(parameters.adc_pinA, INPUT);
+    pinMode(parameters.adc_pinB, INPUT);
 
     AS5600Status sensorStatus = sensor.begin(Wire, 19, 18, 400000UL);
     if (sensorStatus != AS5600Status::Ok) {
@@ -270,17 +267,18 @@ void FOC_Controller::run()
     else
         setPhaseVoltage(0, 0, 0);
 
+    /* print data using JustFloat protocal of Vofa+ */
     static uint32_t lastPrintTime = 0;
     if (millis() - lastPrintTime >= 1) {
         lastPrintTime = millis();
 
-        typedef struct
+        struct Frame_t
         {
             float velocity;
             float e_angle;
             float SMO_Est_theta;
             uint8_t tail[4];
-        } Frame_t __attribute__((packed));
+        } __attribute__((packed));
 
         static Frame_t tx_frame = {.tail = {0x00, 0x00, 0x80, 0x7F}};
         tx_frame.velocity = actual_velocity;
@@ -409,12 +407,14 @@ bool FOC_Controller::calibrateSensor()
     return true;
 }
 
-/* Current Sensor ----------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                               Current Sensor                               */
+/* -------------------------------------------------------------------------- */
 
 // ESP32 ADC Parameters
-#define ADC_VOLTAGE 3.3f
-#define ADC_RESOLUTION 4095.0f
-#define ADC_CONV (ADC_VOLTAGE / ADC_RESOLUTION) // Voltage = ADC reading * ADC_CONV
+constexpr float ADC_VOLTAGE = 3.3f;
+constexpr float ADC_RESOLUTION = 4095.0f;
+constexpr float ADC_CONV = (ADC_VOLTAGE / ADC_RESOLUTION); // Voltage = ADC reading * ADC_CONV
 
 void FOC_Controller::calibrateCurrentSensorZeroDrift()
 {
@@ -506,16 +506,6 @@ void FOC_Controller::resetRuntimeState()
 
     ClearSMO();
     smo_last_time = micros();
-}
-
-void FOC_Controller::setSMOParameters(float phase_resistance_ohm,
-                        float phase_inductance_h)
-{
-    // Set the SMO parameters
-    Rs = phase_resistance_ohm;
-    Ls = phase_inductance_h;
-    smo_initialized = true;
-    ClearSMO(); // Clear the SMO state variables
 }
 
 void FOC_Controller::SMO_estimate()

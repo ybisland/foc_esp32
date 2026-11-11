@@ -2,10 +2,9 @@
 
 /*
  * FOC_Controller usage:
- * 1. Create an instance and call configure() with the PWM pins, motor parameters,
- *    and current-sensor parameters.
- *    If using the SMO, call setSMOParameters() after configure() to provide
- *    the motor resistance and inductance. The observer runs in active modes.
+ * 1. Create a FOC_Parameters object with the PWM pins, motor, and current-sensor
+ *    parameters, then pass it to configure(). This also initializes the SMO,
+ *    which runs in active modes.
  * 2. Velocity and current limits default to +/-150 rad/s and +/-0.5 A.
  *    Optionally override them and configure the PID(s), then call
  *    calibrateSensor(); it calibrates current zero before encoder alignment.
@@ -17,9 +16,11 @@
  * Example (velocity mode):
  *   FOC_Controller foc;
  *   void setup() {
- *       foc.configure(PIN_A, PIN_B, PIN_C, pole_pairs, 1, bus_voltage,
- *                     CURRENT_PIN_A, CURRENT_PIN_B, shunt_resistor_ohm,
- *                     amp_gain);
+ *       FOC_Parameters parameters(PIN_A, PIN_B, PIN_C, pole_pairs, 1,
+ *                                 bus_voltage, CURRENT_PIN_A, CURRENT_PIN_B,
+ *                                 shunt_resistor_ohm, amp_gain,
+ *                                 phase_resistance_ohm, phase_inductance_h);
+ *       foc.configure(parameters);
  *       // Optional: override the default velocity and current limits.
  *       // foc.setVelocityLimits(-max_velocity, max_velocity); //  default +/-150 rad/s
  *       // foc.setCurrentLimits(-max_current, max_current); // default +/-0.5 A
@@ -39,11 +40,32 @@
 #include "AS5600.h"
 #include "PID.h"
 
-typedef enum {
+enum FOCMode
+{
     FOC_MODE_STOPPED = 0,
     FOC_MODE_VELOCITY_CLOSED_LOOP = 2,
     FOC_MODE_CURRENT_LOOP = 3
-} FOCMode;
+};
+
+struct FOC_Parameters
+{
+    /* Motor Parameters */
+    int pole_pairs;
+    float phase_resistance_ohm;
+    float phase_inductance_h;
+
+    /* Inverter Parameters */
+    int pwm_pin_A, pwm_pin_B, pwm_pin_C;
+    float bus_voltage;
+
+    /* Current Sensor Parameters */
+    int adc_pinA, adc_pinB;
+    float shunt_resistor_ohm;
+    float amp_gain;
+
+    /* AS5600 Sensor Parameters (just for monitoring) */
+    int sensor_dir;
+};
 
 class FOC_Controller
 {
@@ -53,16 +75,7 @@ public:
     // Current filter cutoff is optional and defaults to 100 Hz.
     // Configure the motor and required current sensor before calibration or control.
     // sensor_dir sets the positive sensor direction and must be 1 or -1.
-    void configure(int pwm_pin_A, int pwm_pin_B, int pwm_pin_C,
-                   int pole_pairs, int sensor_dir,
-                   float bus_voltage,
-                   int adc_pinA, int adc_pinB,
-                   float shunt_resistor_ohm, float amp_gain);
-
-    // Sets the SMO phase resistance (ohms) and inductance (henries).
-    // Call after configure() when using the SMO.
-    void setSMOParameters(float phase_resistance_ohm,
-                          float phase_inductance_h);
+    void configure(const FOC_Parameters &parameters);
 
     // Velocity and current limits have defaults and can be overridden.
     // Entering FOC_MODE_STOPPED clears targets and controller/observer history
@@ -172,7 +185,7 @@ private:
     float SMO_Est_theta;          // Latest estimated electrical angle, in radians.
     unsigned smo_last_time = 0;   // Last time SMO was updated, in microseconds.
     bool smo_initialized = false; // Indicates whether the SMO has been initialized.
-    void ClearSMO();           // clear the SMO state variables
+    void ClearSMO();              // clear the SMO state variables
     void resetRuntimeState();
     void SMO_estimate();
 
